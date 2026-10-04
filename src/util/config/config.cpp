@@ -906,6 +906,14 @@ namespace dxvk {
      * Helps alt tab crash on Linux               */
     { R"(\\AssassinsCreedIIGame\.exe$)" , {{
       { "d3d9.deviceLossOnFocusLoss",       "True" },
+      { "d3d9.sanitizeMxcsrRounding",       "True" },
+      { "d3d9.fixMinimizedWindowRect",      "True" },
+    }} },
+    /* Assassin's Creed Brotherhood, Revelations  *
+     * Same engine and issues as AC2 (#2249)      */
+    { R"(\\AC(B|R)SP\.exe$)" , {{
+      { "d3d9.sanitizeMxcsrRounding",       "True" },
+      { "d3d9.fixMinimizedWindowRect",      "True" },
     }} },
     /* Sonic CD                                   */
     { R"(\\soniccd\.exe$)", {{

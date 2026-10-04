@@ -302,6 +302,39 @@ namespace dxvk {
     return D3D9TextureStageStateTypes(Type - 1);
   }
 
+  /**
+   * \brief Forces MXCSR back to round-to-nearest on entry and exit
+   *
+   * Newer Nvidia drivers can leave the application thread in
+   * round-toward-zero mode from places other than device creation.
+   * Games such as Assassin's Creed Brotherhood keep running with the
+   * broken mode, so reset the rounding bits at frame boundaries.
+   * Only the rounding control bits are touched.
+   */
+  class D3D9MxcsrRoundingScope {
+
+  public:
+
+    explicit D3D9MxcsrRoundingScope(bool enabled, const char* where);
+
+    ~D3D9MxcsrRoundingScope();
+
+  private:
+
+    bool        m_enabled;
+    const char* m_where;
+
+  };
+
+  /**
+   * \brief Hides the parking rect of minimized windows from the application
+   *
+   * Some games size their render targets from GetWindowRect, which returns
+   * the (-32000, -32000) parking position while the window is minimized,
+   * and then fail to create absurdly sized textures and crash.
+   */
+  void HookMinimizedWindowRect();
+
 }
 
 

@@ -2,7 +2,114 @@
 
 #include "../util/util_win32_compat.h"
 
+#if (defined(__i386__) || (defined(__x86_64__) && !defined(__arm64ec__)) || defined(_M_IX86) || (defined(_M_X64) && !defined(_M_ARM64EC)))
+#define DXVK_D3D9_X86_MXCSR
+#include <xmmintrin.h>
+#endif
+
 namespace dxvk {
+
+  static void SanitizeMxcsrRounding(const char* where) {
+#ifdef DXVK_D3D9_X86_MXCSR
+    constexpr uint32_t RoundingMask = 0x6000;
+    uint32_t mxcsr = _mm_getcsr();
+
+    if (unlikely(mxcsr & RoundingMask)) {
+      static std::atomic<uint32_t> s_logged = { 0u };
+
+      if (s_logged++ < 16u) {
+        Logger::warn(str::format("D3D9: ", where, ": restoring MXCSR round-to-nearest: ",
+          std::hex, mxcsr, " -> ", mxcsr & ~RoundingMask));
+      }
+
+      _mm_setcsr(mxcsr & ~RoundingMask);
+    }
+#endif
+  }
+
+
+  D3D9MxcsrRoundingScope::D3D9MxcsrRoundingScope(bool enabled, const char* where)
+  : m_enabled(enabled), m_where(where) {
+    if (m_enabled)
+      SanitizeMxcsrRounding(m_where);
+  }
+
+
+  D3D9MxcsrRoundingScope::~D3D9MxcsrRoundingScope() {
+    if (m_enabled)
+      SanitizeMxcsrRounding(m_where);
+  }
+
+
+#ifdef _WIN32
+  static BOOL (WINAPI* g_origGetWindowRect)(HWND, LPRECT) = nullptr;
+  static HWND g_lastRectWindow = nullptr;
+  static RECT g_lastRect = { };
+
+  static BOOL WINAPI HookedGetWindowRect(HWND hWnd, LPRECT pRect) {
+    BOOL result = g_origGetWindowRect(hWnd, pRect);
+
+    if (!result || !pRect)
+      return result;
+
+    // Minimized windows are parked around (-32000, -32000). This also
+    // catches the transition while the window is being restored.
+    if (::IsIconic(hWnd) || pRect->left <= -30000 || pRect->top <= -30000) {
+      if (hWnd == g_lastRectWindow)
+        *pRect = g_lastRect;
+      else
+        ::SetRect(pRect, 0, 0, ::GetSystemMetrics(SM_CXSCREEN), ::GetSystemMetrics(SM_CYSCREEN));
+      return TRUE;
+    }
+
+    g_lastRectWindow = hWnd;
+    g_lastRect = *pRect;
+    return result;
+  }
+#endif
+
+
+  void HookMinimizedWindowRect() {
+#ifdef _WIN32
+    if (g_origGetWindowRect)
+      return;
+
+    auto* base = reinterpret_cast<uint8_t*>(::GetModuleHandleW(nullptr));
+    auto* dos  = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+    auto* nt   = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+    auto& dir  = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+
+    if (!dir.VirtualAddress)
+      return;
+
+    for (auto* imp = reinterpret_cast<const IMAGE_IMPORT_DESCRIPTOR*>(base + dir.VirtualAddress); imp->Name; imp++) {
+      if (_stricmp(reinterpret_cast<const char*>(base + imp->Name), "user32.dll"))
+        continue;
+
+      auto* names = reinterpret_cast<const IMAGE_THUNK_DATA*>(base + imp->OriginalFirstThunk);
+      auto* addrs = reinterpret_cast<IMAGE_THUNK_DATA*>(base + imp->FirstThunk);
+
+      for (; imp->OriginalFirstThunk && names->u1.AddressOfData; names++, addrs++) {
+        if (IMAGE_SNAP_BY_ORDINAL(names->u1.Ordinal))
+          continue;
+
+        auto* name = reinterpret_cast<const IMAGE_IMPORT_BY_NAME*>(base + names->u1.AddressOfData);
+
+        if (strcmp(reinterpret_cast<const char*>(name->Name), "GetWindowRect"))
+          continue;
+
+        DWORD oldProtect;
+        ::VirtualProtect(&addrs->u1.Function, sizeof(addrs->u1.Function), PAGE_READWRITE, &oldProtect);
+        g_origGetWindowRect = reinterpret_cast<decltype(g_origGetWindowRect)>(addrs->u1.Function);
+        addrs->u1.Function = reinterpret_cast<decltype(addrs->u1.Function)>(&HookedGetWindowRect);
+        ::VirtualProtect(&addrs->u1.Function, sizeof(addrs->u1.Function), oldProtect, &oldProtect);
+
+        Logger::info("D3D9: Hooked GetWindowRect to hide minimized window parking rect");
+        return;
+      }
+    }
+#endif
+  }
 
   typedef HRESULT (STDMETHODCALLTYPE *D3DXDisassembleShader) (
     const void*      pShader, 

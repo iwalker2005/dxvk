@@ -1859,6 +1859,7 @@ namespace dxvk {
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::BeginScene() {
     D3D9DeviceLock lock = LockDevice();
+    D3D9MxcsrRoundingScope mxcsrScope(m_d3d9Options.sanitizeMxcsrRounding, "BeginScene");
 
     if (unlikely(m_inScene))
       return D3DERR_INVALIDCALL;
@@ -1871,6 +1872,7 @@ namespace dxvk {
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::EndScene() {
     D3D9DeviceLock lock = LockDevice();
+    D3D9MxcsrRoundingScope mxcsrScope(m_d3d9Options.sanitizeMxcsrRounding, "EndScene");
 
     if (unlikely(!m_inScene))
       return D3DERR_INVALIDCALL;
@@ -4248,6 +4250,7 @@ namespace dxvk {
           HWND hDestWindowOverride,
     const RGNDATA* pDirtyRegion,
           DWORD dwFlags) {
+    D3D9MxcsrRoundingScope mxcsrScope(m_d3d9Options.sanitizeMxcsrRounding, "PresentEx");
 
     if (m_cursor.IsSoftwareCursor()) {
       D3D9_SOFTWARE_CURSOR* pSoftwareCursor = m_cursor.GetSoftwareCursor();

@@ -159,6 +159,12 @@ namespace dxvk {
     /// Enable emulation of device loss when a fullscreen app loses focus
     bool deviceLossOnFocusLoss;
 
+    /// Reset MXCSR to round-to-nearest at frame boundaries
+    bool sanitizeMxcsrRounding;
+
+    /// Report the last real window rect instead of the minimized parking rect
+    bool fixMinimizedWindowRect;
+
     /// Disable counting losable resources and rejecting calls to Reset() if any are still alive
     bool countLosableResources;
 

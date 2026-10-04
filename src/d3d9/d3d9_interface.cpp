@@ -73,6 +73,9 @@ namespace dxvk {
     }
 #endif
 
+    if (m_d3d9Options.fixMinimizedWindowRect)
+      HookMinimizedWindowRect();
+
     if (bExtended) {
       m_d3dCompatibility.set(D3DCompatibility::D3D9Ex);
       Logger::info("The D3D9 interface is operating in D3D9Ex mode.");
